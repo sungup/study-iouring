@@ -91,7 +91,7 @@ static inline void io_uring_prep_nvme_admin(struct io_uring_sqe *sqe, int fd, co
     sqe->user_data = 0;
     sqe->cmd_op = NVME_URING_CMD_ADMIN;
 
-    sqe->flags = RWF_NOWAIT;
+    //sqe->rw_flags = RWF_NOWAIT;
     sqe->ioprio = 0;
     sqe->fd = 0;
     sqe->off = 0;
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    qd = io_uring_queue_init(512, &ring, IORING_SETUP_SQE128|IORING_SETUP_CQE32);
+    qd = io_uring_queue_init(16, &ring, IORING_SETUP_SQE128|IORING_SETUP_CQE32);
     if (qd < 0) {
         perror("io_uring_queue_init");
         ret = 1;
@@ -155,7 +155,14 @@ int main(int argc, char* argv[]) {
     io_uring_prep_nvme_admin(sqe, fd, buf);
 
     io_uring_sqe_set_data(sqe, &cmd);
-    io_uring_submit(&ring);
+    ret = io_uring_submit(&ring);
+    if (ret < 0) {
+        perror("io_uring_submit");
+        ret = 1;
+        goto QUEUE_EXIT;
+    } else {
+        printf("return code: %d\n", ret);
+    }
 
     io_uring_wait_cqe(&ring, &cqe);
     printf("Result: %d\n", cqe->res);
