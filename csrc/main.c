@@ -5,13 +5,11 @@
 #define _GNU_SOURCE
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-
 #include <fcntl.h>
 
-
-#include "io_uring.h"
+#include <linux/nvme_ioctl.h>
+#include <linux/io_uring.h>
 #include <liburing.h>
 
 enum nvme_admin_opcode {
@@ -45,56 +43,21 @@ enum nvme_admin_opcode {
     nvme_admin_vendor_start		= 0xC0,
 };
 
-
-/* same as struct nvme_passthru_cmd64, minus the 8b result field */
-struct nvme_uring_cmd {
-    __u8	opcode;
-    __u8	flags;
-    __u16	rsvd1;
-    __u32	nsid;
-    __u32	cdw2;
-    __u32	cdw3;
-    __u64	metadata;
-    __u64	addr;
-    __u32	metadata_len;
-    __u32	data_len;
-    __u32	cdw10;
-    __u32	cdw11;
-    __u32	cdw12;
-    __u32	cdw13;
-    __u32	cdw14;
-    __u32	cdw15;
-    __u32	timeout_ms;
-    __u32   rsvd2;
-};
-
-/* io_uring async commands: */
-#define NVME_URING_CMD_IO	_IOWR('N', 0x80, struct nvme_uring_cmd)
-#define NVME_URING_CMD_IO_VEC	_IOWR('N', 0x81, struct nvme_uring_cmd)
-#define NVME_URING_CMD_ADMIN	_IOWR('N', 0x82, struct nvme_uring_cmd)
-#define NVME_URING_CMD_ADMIN_VEC _IOWR('N', 0x83, struct nvme_uring_cmd)
-
 #define nvme_identify_cns_controller 0x01
 #define ID_CTRL_SZ 4096
 
-
-static inline void io_uring_prep_nvme_admin(struct io_uring_sqe *sqe, int fd, const char* buf) {
+static inline void prep_nvme_identify_ctrl(struct io_uring_sqe *sqe, int fd,
+        __u32 nsid, __u32 cntid, __u32 nvmSetId, const char* buf) {
     struct nvme_uring_cmd *cmd;
 
-    __u32 nsid = 0;
-    __u32 cntid = 0;
-    __u32 nvmSetId = 0;
-
+    // fill IOUring commands
     sqe->fd = fd;
     sqe->rw_flags = 0;
     sqe->opcode = (__u8) IORING_OP_URING_CMD;
     sqe->user_data = 0;
     sqe->cmd_op = NVME_URING_CMD_ADMIN;
 
-    //sqe->rw_flags = RWF_NOWAIT;
     sqe->ioprio = 0;
-    sqe->fd = 0;
-    sqe->off = 0;
     sqe->addr = 0;
     sqe->len = 0;
     sqe->user_data = 0;
@@ -102,6 +65,7 @@ static inline void io_uring_prep_nvme_admin(struct io_uring_sqe *sqe, int fd, co
     sqe->personality = 0;
     sqe->file_index = 0;
 
+    // fill NVMe driver commands
     cmd = (struct nvme_uring_cmd*)sqe->cmd;
 
     memset(cmd, 0, sizeof(*cmd));
@@ -112,8 +76,6 @@ static inline void io_uring_prep_nvme_admin(struct io_uring_sqe *sqe, int fd, co
 
     cmd->addr = (__u64)buf;
     cmd->data_len = ID_CTRL_SZ;
-
-    //io_uring_prep_rw(NVME_URING_CMD_ADMIN, sqe, fd, cmd, sizeof(*cmd), 0);
 }
 
 int main(int argc, char* argv[]) {
@@ -125,6 +87,9 @@ int main(int argc, char* argv[]) {
     char buf[ID_CTRL_SZ];
     int ret = 0;
 
+    __u32 nsid = 0;
+    __u32 cntid = 0;
+    __u32 nvmSetId = 0;
 
     if (argc < 2) {
         printf("Usage: %s <device>\n", argv[0]);
@@ -152,7 +117,7 @@ int main(int argc, char* argv[]) {
     }
 
     memset(buf, 0, ID_CTRL_SZ);
-    io_uring_prep_nvme_admin(sqe, fd, buf);
+    prep_nvme_identify_ctrl(sqe, fd, nsid, cntid, nvmSetId, buf);
 
     io_uring_sqe_set_data(sqe, &cmd);
     ret = io_uring_submit(&ring);
