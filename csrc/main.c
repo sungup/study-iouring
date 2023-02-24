@@ -50,20 +50,12 @@ static inline void prep_nvme_identify_ctrl(struct io_uring_sqe *sqe, int fd,
         __u32 nsid, __u32 cntid, __u32 nvmSetId, const char* buf) {
     struct nvme_uring_cmd *cmd;
 
+    memset(sqe, 0, sizeof(*sqe));
+    
     // fill IOUring commands
     sqe->fd = fd;
-    sqe->rw_flags = 0;
     sqe->opcode = (__u8) IORING_OP_URING_CMD;
-    sqe->user_data = 0;
     sqe->cmd_op = NVME_URING_CMD_ADMIN;
-
-    sqe->ioprio = 0;
-    sqe->addr = 0;
-    sqe->len = 0;
-    sqe->user_data = 0;
-    sqe->buf_index = 0;
-    sqe->personality = 0;
-    sqe->file_index = 0;
 
     // fill NVMe driver commands
     cmd = (struct nvme_uring_cmd*)sqe->cmd;
